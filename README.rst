@@ -106,7 +106,7 @@ The preferred way to interact with the Rocket.Chat api is to use models defined 
    >>> rocketchat.models.User.me
    <User(_id='CA9t5phAAaLcN9sdZ', type=None, status='offline', active=True, name='bot'...)>
    >>> foo = rocketchat.models.User(username='foo').get()
-   >>> foo.send('Hellow foo')
+   >>> foo.send('Hello foo')
 
 
 To list public, groups, direct message rooms
@@ -121,6 +121,7 @@ To list public, groups, direct message rooms
 To list messages for a room:
 
 .. code:: python
+
    >>> myroom = rocketchat.models.Channel(name='myroom').get()
    >>> myroom.messages.get()
    >>> myroom.send('hello')
