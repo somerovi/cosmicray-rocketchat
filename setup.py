@@ -20,7 +20,7 @@ DESCRIPTION = ''
 PACKAGES = ['rocketchat']
 REQUIRED = [
     'click==6.7',
-    'cosmicray>=0.0.7',
+    'cosmicray>=0.0.8',
     'six==1.11.0'
 ]
 
