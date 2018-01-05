@@ -108,12 +108,19 @@ class Channel(Base):
         'channel_type'
     ]
     __route__ = v1.channels_info
+
     channels = model.relationship(
-        'Channel', v1.channels_list, is_sequence=True, is_static=True)
+        'Channel', v1.channels_list,
+        urlargs={'channel_type': 'channels'},
+        is_sequence=True, is_static=True)
     direct = model.relationship(
-        'Direct', v1.im_list, is_sequence=True, is_static=True)
+        'Direct', v1.channels_list,
+        urlargs={'channel_type': 'im'},
+        is_sequence=True, is_static=True)
     groups = model.relationship(
-        'Group', v1.groups_list, is_sequence=True, is_static=True)
+        'Group', v1.channels_list,
+        urlargs={'channel_type': 'groups'},
+        is_sequence=True, is_static=True)
     _messages = model.relationship(
         'Message', v1.channels_messages, is_sequence=True,
         params={'roomId': model.ModelParam('_id')},
@@ -125,12 +132,14 @@ class Channel(Base):
         return Messages(channel=self)
 
     @property
-    def last_message(self):
-        return self.messages.last_message
-
-    @property
     def users(self):
         return list(User(username=username).get() for username in self.usernames)
+
+    @property
+    def configuration(self):
+        identifier = '{}:{}'.format(self._id, self.name or '')
+        v1.api.config.setdefault(identifier, {})
+        return v1.api.config[identifier]
 
     def get(self):
         params = {'roomId': self._id} if self._id else {'roomName': self.name}
@@ -232,7 +241,8 @@ class Message(Base):
         'emoji',
         'avatar',
         'channel_name',
-        'channel_type'
+        'channel_type',
+        'unreadNotLoaded'
     ]
 
     @property
@@ -253,11 +263,11 @@ class Message(Base):
             return Direct(_id=self.rid, channel_type=self.channel_type)
 
     def get(self):
-        self.dict = v1.chat_get(Message, **self.get_payload()).post()
+        self.dict = v1.message_get(Message, **self.get_payload()).post()
         return self
 
     def update(self):
-        return v1.chat_update(
+        return v1.message_update(
             Message,
             **self.get_payload({
             'roomId': self.rid,
@@ -266,7 +276,7 @@ class Message(Base):
 
     def create(self):
         channel = '#{}'.format(self.channel_name) if self.channel_name else None,
-        return v1.chat_post(
+        return v1.message_post(
             Message,
             **self.get_payload({
                 'roomId': self.rid,
@@ -279,27 +289,27 @@ class Message(Base):
         })).post()
 
     def delete(self, as_user=True):
-        return v1.chat_delete(**self.get_payload({
+        return v1.message_delete(**self.get_payload({
             'roomId': self.rid,
             'text': self.msg,
             'asUser': as_user
         })).post()
 
     def pin(self):
-        return v1.chat_pin(Message, **self.get_payload()).post()
+        return v1.message_pin(Message, **self.get_payload()).post()
 
     def unpin(self):
-        return v1.chat_unpin(**self.get_payload()).post()
+        return v1.message_unpin(**self.get_payload()).post()
 
     def react(self):
         # Not supported yet?
-        return v1.chat_react(**self.get_payload({
+        return v1.message_react(**self.get_payload({
             'emoji': self.emoji
         })).post()
 
     def unreact(self):
         # Not supported yet?
-        return v1.chat_unreact(**self.get_payload()).post()
+        return v1.message_unreact(**self.get_payload()).post()
 
     def get_payload(self, args=None, **kwargs):
         payload = {'msgId': self._id, 'messageId': self._id}
@@ -309,9 +319,10 @@ class Message(Base):
 
 class Messages(object):
 
-    def __init__(self, channel, params=None):
+    def __init__(self, channel, params=None, sort_order='asc'):
         self.channel = channel
         self.params = params or {}
+        self.sort_order = sort_order
 
     def get_params(self, **kwargs):
         params = dict(self.params)
@@ -319,28 +330,77 @@ class Messages(object):
         return params
 
     @property
-    def last_message(self):
-        messages = self.count(1).get()
+    def recent(self):
+        return self._sort(self.get())
+
+    @property
+    def last(self):
+        return self.count(1).get()
+
+    @property
+    def today(self):
+        pass
+
+    @property
+    def unread(self):
+        last_message_dt = self.channel.configuration.get(
+            'last_message_dt', '2017-01-01')
+
+        messages = self.include_unread_count\
+                       .count(1)\
+                       .by_daterange(last_message_dt, None)\
+                       .get()
         if messages:
-            return messages[0]
+            recent_message_dt = messages[0].ts
+            unread = messages[0].unreadNotLoaded
+            if unread:
+                messages.extend(self.count(unread)\
+                               .by_daterange(last_message_dt, recent_message_dt)\
+                               .get())
+            self.channel.lm = messages[0]._updatedAt
+            self.channel.configuration['last_message_dt'] = messages[0]._updatedAt
+            v1.api.store_configurations()
+        return self._sort(messages)
+
+    @property
+    def asc(self):
+        return Messages(self.channel, self.get_params(), 'asc')
+
+    @property
+    def desc(self):
+        return Messages(self.channel, self.get_params(), 'desc')
 
     @property
     def inclusive(self):
-        return Messages(self.channel, self.get_params(inclusive=True))
+        return Messages(
+            self.channel, self.get_params(inclusive=True), self.sort_order)
 
     @property
-    def unreads(self):
-        return Messages(self.channel, self.get_params(unreads=True))
+    def include_unread_count(self):
+        return Messages(
+            self.channel, self.get_params(unreads=True), self.sort_order)
 
     def count(self, count):
-        return Messages(self.channel, self.get_params(count=count))
+        return Messages(
+            self.channel, self.get_params(count=count), self.sort_order)
 
     def by_daterange(self, start, end):
-        return Messages(self.channel, self.get_params(oldest=start, latest=end))
+        return Messages(
+            self.channel, self.get_params(oldest=start, latest=end), self.sort_order)
+
+    def _sort(self, messages):
+        return sorted(
+            messages, key=lambda obj: obj.ts, reverse=self.sort_order == 'desc')
 
     def get(self):
         return list(self.channel._messages(params=self.params).get())
 
-    @property
-    def value(self):
-        return self.get()
+    def delete(self):
+        if 'oldest' not in self.params or 'latest' not in self.params:
+            raise TypeError('Missing required parameters: oldest/latest')
+        return v1.channels_remove_messages(json={
+            'roomId': self.channel._id,
+            'oldest': self.params['start'],
+            'latest': self.param['end'],
+            'inclusive': self.param.get('inclusive', False)
+        }).post()

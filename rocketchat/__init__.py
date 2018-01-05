@@ -39,5 +39,25 @@ def store_config():
     v1.api.store_configurations()
 
 
+def debug(enable=True):
+    configure(config={'debug': enable})
+
+
+def channels():
+    return dict((c.name, c) for c in models.Channel.channels)
+
+
+def groups():
+    return dict((c.name, c) for c in models.Channel.groups)
+
+
+def direct():
+    return dict((c.name, c) for c in models.Channel.direct)
+
+
+def users():
+    return dict((u.username, u) for u in models.User.users)
+
+
 configure(authenticator=v1.authenticator)
 load_config()

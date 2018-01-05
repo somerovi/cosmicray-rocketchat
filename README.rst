@@ -117,11 +117,35 @@ To list public, groups, direct message rooms
    >>> groups = rocketchat.models.Channel.groups
    >>> direct = rocketchat.models.Channel.direct
 
-
-To list messages for a room:
+For convenience, one could access users and rooms via mappings:
 
 .. code:: python
 
-   >>> myroom = rocketchat.models.Channel(name='myroom').get()
-   >>> myroom.messages.get()
+   >>> users = rocketchat.users()
+   >>> channels = rocketchat.channels()
+   >>> groups = rocketchat.groups()
+   >>> foo = users['foo']
+   >>> foo.send('Hello Foo!')
+   >>> messages = channels['mychannel'].messages.unread
+   >>> channels['mychannel'].send('Hey!')
+
+
+To list/send messages for a channel (direct, group, or public/private channel):
+
+.. code:: python
+
+   >>> myroom = rocketchat.channels()['myroom']
+   >>> print(myroom.messages.unread)
+   >>> messages = myroom.messages.by_daterange('2018-01-01', '2018-01-02').count(100).get()
    >>> myroom.send('hello')
+
+
+To update/delete messages:
+
+.. code:: python
+
+   >>> message = myroom.messages.last[0]
+   >>> message.msg = 'changed message'
+   >>> message.update()
+   >>> message.pin()
+   >>> message.delete()

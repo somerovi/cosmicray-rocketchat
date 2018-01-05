@@ -7,11 +7,18 @@ api = cosmicray.Cosmicray('rocketchat')
 # ~/.cosmicray/rocketchat
 api.config['AUTH_CREDS_FILENAME'] = api.home_dir('creds')
 api.config['AUTH_TOKEN_FILENAME'] = api.home_dir('token')
+api.config['RAISE_FOR_STATUS'] = False
 
 
 ENTITY_BODY_MAP = {
     'channels': 'channel',
     'groups': 'group',
+    'im': 'ims'
+}
+
+ENTITY_PLURAL_BODY_MAP = {
+    'channels': 'channels',
+    'groups': 'groups',
     'im': 'ims'
 }
 
@@ -25,157 +32,48 @@ def authenticator(request):
     return request
 
 
-def validate_response(resp):
-    if resp.get('status') != 'success':
-        raise TypeError('Rocketchat error: {}'.format(resp))
-    return resp
+def validate_response(response):
+    try:
+        jdata = response.json()
+    except (ValueError, TypeError):
+        raise RocketChatError('response is not JSON', 'json-error')
+    success = (('success' in jdata and jdata['success']) or
+               ('status' in jdata and jdata['status'] == 'success'))
+    if not success:
+        raise RocketChatError(
+            jdata.get('error'), jdata.get('errorType'), response.status_code)
+    return jdata
 
 
 @api.route('/api/v1/info', ['GET'])
 def info(response):
-    return response.json()
+    '''Information about the Rocket.Chat server.'''
+    return validate_response(response)
+
+
+# https://docs.rocket.chat/developer-guides/rest-api/authentication
 
 
 @api.route('/api/v1/login', ['POST'])
 def login(response):
-    '''
-    https://docs.rocket.chat/developer-guides/rest-api/authentication/login
-
-    request:
-    :param json: { "user": "USERNAME", "password": "PASSWORD" }
-
-    response:
-    { "status": "success", "data": { "authToken": "TOKEN", "userId": "USERID" } }
-    '''
-    return validate_response(response.json()).get('data')
+    '''Authenticate with the REST API.'''
+    return validate_response(response).get('data')
 
 
 @api.route('/api/v1/logout', ['GET'])
 def logout(response):
-    '''
-    https://docs.rocket.chat/developer-guides/rest-api/authentication/logout
-
-    response:
-    { "status": "success", "data": { "message": "You've been logged out!" } }
-    '''
+    '''Invalidate your REST API authentication token.'''
     Token.clear_from_storage()
-    return validate_response(response.json()).get('data')
+    return validate_response(response).get('data')
 
 
 @api.route('/api/v1/me', ['GET'])
 def me(response):
-    '''
-    https://docs.rocket.chat/developer-guides/rest-api/authentication/me
-
-    response:
-    { "_id": "aobEdbYhXfu5hkeqG", "name": "Example User",
-      "emails": [ { "address": "example@example.com", "verified": true } ],
-      "status": "offline", "statusConnection": "offline", "username": "example",
-      "utcOffset": 0, "active": true, "success": true
-    }
-    '''
-    return response.json()
+    '''Displays information about the authenticated user'''
+    return validate_response(response)
 
 
-# https://rocket.chat/docs/developer-guides/rest-api/users/
-
-
-@api.route('/api/v1/users.create', ['POST'])
-def users_create(response):
-    """Create a new user."""
-    return response.json()
-
-
-@api.route('/api/v1/users.createToken', ['POST'])
-def users_create_token(response):
-    """Create a user authentication token."""
-    return response.json()
-
-
-@api.route('/api/v1/users.delete', ['POST'])
-def users_delete(response):
-    """Deletes an existing user."""
-    return response.json()
-
-
-@api.route('/api/v1/users.getAvatar', ['POST'])
-def users_get_avatar(response):
-    """Gets the URL for a user's avatar."""
-    return response.json()
-
-
-@api.route('/api/v1/users.getPresence', ['GET'], params=[
-    cosmicray.Param('userId'), cosmicray.Param('username')])
-def users_get_presence(response):
-    """Gets the online presence of the a user.
-
-    response: { "presence": "offline", "success": true }
-    """
-    return response.json()
-
-
-@api.route('/api/v1/users.info', ['GET'], params=[
-    cosmicray.Param('userId'), cosmicray.Param('username')])
-def users_info(response):
-    """Gets a user's information, limited to the caller's permissions.
-    { "user": { "_id": "nSYqWzZ4GsKTX4dyK", "type": "user", "status":
-    "offline", "active": true, "name": "Example User", "utcOffset": 0,
-    "username": "example"  }, "success": true  }
-    """
-    return response.json().get('user')
-
-
-@api.route('/api/v1/users.list', ['GET'])
-def users_list(response):
-    """All of the users and their information, limited to permissions."""
-    return response.json().get('users')
-
-
-@api.route('/api/v1/users.register', ['POST'])
-def users_register(response):
-    """Register a new user."""
-    return response.json()
-
-
-@api.route('/api/v1/users.resetAvatar', ['POST'])
-def users_reset_avatar(response):
-    """Reset a user's avatar"""
-    return response.json()
-
-
-@api.route('/api/v1/users.setAvatar', ['POST'])
-def users_set_avatar(response):
-    """Set a user's avatar"""
-    return response.json()
-
-
-@api.route('/api/v1/users.update', ['POST'])
-def users_update(response):
-    """Update an existing user."""
-    return response.json()
-
-
-# https://rocket.chat/docs/developer-guides/rest-api/im
-
-
-@api.route('/api/v1/im.messages.others', ['GET'])
-def im_messages_others(response):
-    """Retrieves the messages from any direct message in the server."""
-    return response.json()
-
-
-@api.route('/api/v1/im.list', ['GET'])
-def im_list(response):
-    """List the direct channels the caller is part of."""
-    return response.json().get('ims')
-
-
-@api.route('/api/v1/im.list.everyone', ['GET'])
-def im_list_everyone(response):
-    """List all direct message the caller in the server."""
-    return response.json()
-
-
+# TODO:
 # https://rocket.chat/docs/developer-guides/rest-api/livechat
 
 
@@ -186,7 +84,7 @@ def livechat_users(response):
     """ POST Create a new livechat agent or manager. """
     """ GET Retrieve agent or manager data. """
     """ DELETE Removes a livechat agent or manager. """
-    return response.json()
+    return validate_response(response)
 
 
 @api.route('/api/v1/livechat/department/{_id}', ['GET', 'POST', 'PUT', 'DELETE'])
@@ -196,35 +94,36 @@ def livechat_department(response):
     """ GET Retrieve a livechat department data. info"""
     """ PUT Updates a livechat department data. info"""
     """ DELETE Delete a livechat department. info"""
-    return response.json()
+    return validate_response(response)
 
 
 @api.route('/api/v1/livechat/sms-incoming/{service}', ['POST'],
            urlargs=[cosmicray.Param('service', default='twillio', options=['twillio'])])
 def livechat_sms_incoming(response):
     """ POST Send SMS messages to Rocket.Chat. info"""
-    return response.json()
+    return validate_response(response)
 
 
+# TODO:
 # https://rocket.chat/docs/developer-guides/rest-api/integration
 
 
 @api.route('/api/v1/integrations.create', ['POST'])
 def integrations_create(response):
     """Creates an integration. Link"""
-    return response.json()
+    return validate_response(response)
 
 
 @api.route('/api/v1/integrations.list', ['POST'])
 def integrations_list(response):
     """Lists all of the integrations. Link"""
-    return response.json()
+    return validate_response(response)
 
 
 @api.route('/api/v1/integrations.remove', ['POST'])
 def integrations_remove(response):
     """Removes an integration. Link"""
-    return response.json()
+    return validate_response(response)
 
 
 
@@ -234,7 +133,7 @@ https://docs.rocket.chat/developer-guides/rest-api/chat/
 
 
 @api.route('/api/v1/chat.getMessage', ['POST'])
-def chat_get(response):
+def message_get(response):
     '''Retrieves a single chat message.
     request:
     { "msgId": "7aDSXtjMA3KPLxLjt" }
@@ -245,11 +144,11 @@ def chat_get(response):
         "u": { "_id": "y65tAmHs93aDChMWu", "username": "graywolf336" } },
       "success": true }
     '''
-    return response.json().get('message')
+    return validate_response(response).get('message')
 
 
 @api.route('/api/v1/chat.postMessage', ['POST'])
-def chat_post(response):
+def message_post(response):
     '''Posts a new chat message.
 
     request:
@@ -259,17 +158,17 @@ def chat_post(response):
     https://docs.rocket.chat/developer-guides/rest-api/chat/postmessage#message-object-example
 
      '''
-    return response.json().get('message')
+    return validate_response(response).get('message')
 
 
 @api.route('/api/v1/chat.update', ['POST'])
-def chat_update(response):
+def message_update(response):
     '''Updates the text of the chat message.'''
-    return response.json().get('message')
+    return validate_response(response).get('message')
 
 
 @api.route('/api/v1/chat.delete', ['POST'])
-def chat_delete(response):
+def message_delete(response):
     '''Deletes an existing chat message.
     request
     { "roomId": "ByehQjC44FwMeiLbX", "msgId": "7aDSXtjMA3KPLxLjt", "asUser": true }
@@ -277,12 +176,12 @@ def chat_delete(response):
     response:
     { "_id": "7aDSXtjMA3KPLxLjt", "ts": 1481741940895, "success": true }
     '''
-    return response.json()
+    return validate_response(response)
 
 
 
 @api.route('/api/v1/chat.pinMessage', ['POST'])
-def chat_pin(response):
+def message_pin(response):
     '''Pins a chat message to the messages channel.
     request:
     { "messageId": "7aDSXtjMA3KPLxLjt" }
@@ -296,49 +195,61 @@ def chat_pin(response):
         "_updatedAt": "2017-09-27T20:39:57.921Z", "_id": "hmzxXKSWmMkoQyiAd" },
       "success": true}
     '''
-    return response.json().get('message')
+    return validate_response(response).get('message')
 
 
 @api.route('/api/v1/chat.react', ['POST'])
-def chat_react(response):
+def message_react(response):
     '''Sets/unsets the users reaction to an existing chat message.'''
-    return response.json()
+    return validate_response(response)
 
 
 @api.route('/api/v1/chat.starMessage', ['POST'])
-def chat_star(response):
+def message_star(response):
     '''Stars a chat message for the authenticated user.'''
-    return response.json()
+    return validate_response(response)
 
 
 @api.route('/api/v1/chat.unPinMessage', ['POST'])
-def chat_unpin(response):
+def message_unpin(response):
     '''Removes the pinned status of the provided chat message.'''
-    return response.json()
+    return validate_response(response)
 
 
 @api.route('/api/v1/chat.unStarMessage', ['POST'])
-def chat_unstar(response):
+def message_unstar(response):
     '''Removes the star on the chat message for the authenticated user.'''
-    return response.json()
+    return validate_response(response)
 
 
 """
 https://docs.rocket.chat/developer-guides/rest-api/channels/
+https://rocket.chat/docs/developer-guides/rest-api/im
+https://rocket.chat/docs/developer-guides/rest-api/groups
 """
 
 
+@api.route('/api/v1/im.messages.others', ['GET'], params=[
+    cosmicray.Param('roomId')])
+def channels_private_messages(response):
+    """Retrieves the messages from any private channel in the server.
+    NOTE: Must ``Enable Direct Message History Endpoint`` otherwise returns 400
+    """
+    return validate_response(response).get('messages')
+
+
+@api.route('/api/v1/im.list.everyone', ['GET'])
+def channels_private_rooms(response):
+    """Lists all private channels in the server.
+    NOTE: Requires the permission ``view-room-administration``.
+    """
+    return validate_response(response).get('ims')
+
+
 @api.route('/api/v1/channels.cleanHistory', ['POST'])
-def channels_clean_history(response):
+def channels_remove_messages(response):
     ''' Cleans up a channels history, requires special permission.'''
-    return response.json()
-
-
-
-@api.route('/api/v1/channels.list', ['GET'])
-def channels_list(response):
-    ''' Retrives all of the channels from the server.'''
-    return response.json().get('channels')
+    return validate_response(response)
 
 
 @api.route('/api/v1/channels.list.joined', ['GET'])
@@ -346,25 +257,22 @@ def channels_list_joined(response):
     '''Gets only the channels the calling user has joined.
     https://rocket.chat/docs/developer-guides/rest-api/channels/list-joined/
     '''
-    return response.json().get('channels')
+    return validate_response(response).get('channels')
 
 
 @api.route('/api/v1/channels.setJoinCode', ['POST'])
 def channels_set_join_code(response):
     ''' Sets the channels code required to join it.'''
-    return response.json()
+    return validate_response(response)
 
 
-# https://rocket.chat/docs/developer-guides/rest-api/groups
+@api.route('/api/v1/{channel_type}.list', ['GET'], urlargs=[
+    cosmicray.Param('channel_type', options=['channels', 'groups', 'im'])])
+def channels_list(context, response):
+    '''Retrives all of the channels from the server.'''
+    key = ENTITY_PLURAL_BODY_MAP.get(context.urlargs['channel_type'])
+    return validate_response(response).get(key)
 
-
-@api.route('/api/v1/groups.list', ['POST'])
-def groups_list(response):
-    """List the private groups the caller is part of."""
-    return response.json()
-
-
-# Generic definitions for channels, groups, and direct
 
 @api.route('/api/v1/{channel_type}.info', ['GET'], params=[
     # Required (if no roomName) The channels id
@@ -375,7 +283,7 @@ def groups_list(response):
 def channels_info(context, response):
     ''' Gets a channels information.'''
     key = ENTITY_BODY_MAP.get(context.urlargs['channel_type'])
-    return response.json().get(key)
+    return validate_response(response).get(key)
 
 
 @api.route('/api/v1/{channel_type}.history', ['GET'],
@@ -398,19 +306,21 @@ def channels_info(context, response):
                    'channel_type', options=['channels', 'im', 'groups'])
            ])
 def channels_messages(context, response):
-    """Retrieves the messages from a channel, group, or direct message."""
-    messages = response.json().get('messages')
+    """Retrieves the messages from a public, group, or direct channel."""
+    jdata = validate_response(response)
+    messages = jdata.get('messages')
     for message in messages:
         message['channel_type'] = context.urlargs['channel_type']
+        message['unreadNotLoaded'] = jdata.get('unreadNotLoaded')
     return messages
 
 
 @api.route('/api/v1/{channel_type}.open', ['POST'], urlargs=[
-    cosmicray.Param('channel_type', options=['channels', 'im', 'groups'])
+    cosmicray.Param('channel_type', options=['channels', 'groups', 'im'])
 ])
 def channels_open(response):
     ''' Adds the channel back to the users list of channels.'''
-    return response.json()
+    return validate_response(response)
 
 
 @api.route('/api/v1/{channel_type}.close', ['POST'], urlargs=[
@@ -418,7 +328,7 @@ def channels_open(response):
 ])
 def channels_close(response):
     ''' Removes a channel from a users list of channels.'''
-    return response.json()
+    return validate_response(response)
 
 
 @api.route('/api/v1/{channel_type}.addAll', ['POST'], urlargs=[
@@ -430,7 +340,7 @@ def channels_add_all(response):
     request:
     { "roomId": "ByehQjC44FwMeiLbX", "activeUsersOnly": true|false }
     '''
-    return response.json().get('channel')
+    return validate_response(response).get('channel')
 
 
 @api.route('/api/v1/{channel_type}.{action}Moderator', ['POST'], urlargs=[
@@ -439,7 +349,7 @@ def channels_add_all(response):
 def channels_moderator(response):
     ''' Gives the role of moderator to a user in a channel.'''
     ''' Removes the role of moderator from a user in a channel.'''
-    return response.json()
+    return validate_response(response)
 
 
 @api.route('/api/v1/{channel_type}.{action}Owner', ['POST'], urlargs=[
@@ -448,7 +358,7 @@ def channels_moderator(response):
 def channels_owner(response):
     '''Gives the role of owner to a user in a channel.'''
     '''Removes the role of owner from a user in a channel.'''
-    return response.json()
+    return validate_response(response)
 
 
 @api.route('/api/v1/{channel_type}.create', ['POST'], urlargs=[
@@ -459,7 +369,7 @@ def channels_create(context, response):
     https://rocket.chat/docs/developer-guides/rest-api/channels/create/
     '''
     key = ENTITY_BODY_MAP.get(context.urlargs['channel_type'])
-    return response.json().get(key)
+    return validate_response(response).get(key)
 
 
 @api.route('/api/v1/{channel_type}.archive', ['POST'], urlargs=[
@@ -469,7 +379,7 @@ def channels_archive(response):
     '''Archives a channel.
     https://rocket.chat/docs/developer-guides/rest-api/channels/archive/
     '''
-    return response.json()
+    return validate_response(response)
 
 
 @api.route('/api/v1/{channel_type}.unarchive', ['POST'], urlargs=[
@@ -479,14 +389,14 @@ def channels_unarchive(response):
     '''Unarchives a channel.
     https://rocket.chat/docs/developer-guides/rest-api/channels/unarchive/
     '''
-    return response.json()
+    return validate_response(response)
 
 @api.route('/api/v1/{channel_type}.getIntegrations', ['GET'], urlargs=[
     cosmicray.Param('channel_type', options=['channels', 'groups'])
 ])
 def channels_get_integrations(response):
     ''' Gets the channels integration.'''
-    return response.json()
+    return validate_response(response)
 
 
 @api.route('/api/v1/{channel_type}.invite', ['POST'], urlargs=[
@@ -497,7 +407,7 @@ def channels_invite(context, response):
     https://rocket.chat/docs/developer-guides/rest-api/channels/invite/
     '''
     key = ENTITY_BODY_MAP.get(context.urlargs['channel_type'])
-    return response.json().get(key)
+    return validate_response(response).get(key)
 
 
 @api.route('/api/v1/{channel_type}.kick', ['POST'], urlargs=[
@@ -506,7 +416,7 @@ def channels_invite(context, response):
 def channels_kick(context, response):
     ''' Removes a user from a channel.'''
     key = ENTITY_BODY_MAP.get(context.urlargs['channel_type'])
-    return response.json().get(key)
+    return validate_response(response).get(key)
 
 
 @api.route('/api/v1/{channel_type}.leave', ['POST'], urlargs=[
@@ -515,7 +425,7 @@ def channels_kick(context, response):
 def channels_leave(context, response):
     ''' Removes the calling user from a channel.'''
     key = ENTITY_BODY_MAP.get(context.urlargs['channel_type'])
-    return response.json().get(key)
+    return validate_response(response).get(key)
 
 
 @api.route('/api/v1/{channel_type}.rename', ['POST'], urlargs=[
@@ -524,7 +434,7 @@ def channels_leave(context, response):
 def channels_rename(context, response):
     ''' Changes a channels name.'''
     key = ENTITY_BODY_MAP.get(context.urlargs['channel_type'])
-    return response.json().get(key)
+    return validate_response(response).get(key)
 
 
 @api.route('/api/v1/{channel_type}.setDescription', ['POST'], urlargs=[
@@ -532,7 +442,7 @@ def channels_rename(context, response):
 ])
 def channels_set_description(response):
     ''' Sets a channels description.'''
-    return response.json().get('description')
+    return validate_response(response).get('description')
 
 
 @api.route('/api/v1/{channel_type}.setPurpose', ['POST'], urlargs=[
@@ -540,7 +450,7 @@ def channels_set_description(response):
 ])
 def channels_set_purpose(response):
     ''' Sets a channels description.'''
-    return response.json().get('purpose')
+    return validate_response(response).get('purpose')
 
 
 @api.route('/api/v1/{channel_type}.setReadOnly', ['POST'], urlargs=[
@@ -549,7 +459,7 @@ def channels_set_purpose(response):
 def channels_set_readonly(context, response):
     ''' Sets whether a channel is read only or not.'''
     key = ENTITY_BODY_MAP.get(context.urlargs['channel_type'])
-    return response.json().get(key)
+    return validate_response(response).get(key)
 
 
 @api.route('/api/v1/{channel_type}.setTopic', ['POST'], urlargs=[
@@ -557,7 +467,7 @@ def channels_set_readonly(context, response):
 ])
 def channels_set_topic(response):
     ''' Sets a channels topic.'''
-    return response.json().get('topic')
+    return validate_response(response).get('topic')
 
 
 @api.route('/api/v1/{channel_type}.setType', ['POST'], urlargs=[
@@ -566,17 +476,95 @@ def channels_set_topic(response):
 def channels_set_type(context, response):
     ''' Sets the type of room the channel should be.'''
     key = ENTITY_BODY_MAP.get(context.urlargs['channel_type'])
-    return response.json().get(key)
+    return validate_response(response).get(key)
 
 
 # https://rocket.chat/docs/developer-guides/rest-api/settings
 
 
-@api.route('/api/v1/settings/:_id', ['GET', 'POST'])
+@api.route('/api/v1/settings/{_id}', ['GET', 'POST'])
 def setting(response):
     """GET Gets a setting."""
     """POST Updates a setting."""
-    return response.json()
+    return validate_response(response)
+
+
+# https://rocket.chat/docs/developer-guides/rest-api/users/
+
+
+@api.route('/api/v1/users.create', ['POST'])
+def users_create(response):
+    """Create a new user."""
+    return validate_response(response)
+
+
+@api.route('/api/v1/users.createToken', ['POST'])
+def users_create_token(response):
+    """Create a user authentication token."""
+    return validate_response(response)
+
+
+@api.route('/api/v1/users.delete', ['POST'])
+def users_delete(response):
+    """Deletes an existing user."""
+    return validate_response(response)
+
+
+@api.route('/api/v1/users.getAvatar', ['POST'])
+def users_get_avatar(response):
+    """Gets the URL for a user's avatar."""
+    return validate_response(response)
+
+
+@api.route('/api/v1/users.getPresence', ['GET'], params=[
+    cosmicray.Param('userId'), cosmicray.Param('username')])
+def users_get_presence(response):
+    """Gets the online presence of the a user.
+
+    response: { "presence": "offline", "success": true }
+    """
+    return validate_response(response)
+
+
+@api.route('/api/v1/users.info', ['GET'], params=[
+    cosmicray.Param('userId'), cosmicray.Param('username')])
+def users_info(response):
+    """Gets a user's information, limited to the caller's permissions.
+    { "user": { "_id": "nSYqWzZ4GsKTX4dyK", "type": "user", "status":
+    "offline", "active": true, "name": "Example User", "utcOffset": 0,
+    "username": "example"  }, "success": true  }
+    """
+    return validate_response(response).get('user')
+
+
+@api.route('/api/v1/users.list', ['GET'])
+def users_list(response):
+    """All of the users and their information, limited to permissions."""
+    return validate_response(response).get('users')
+
+
+@api.route('/api/v1/users.register', ['POST'])
+def users_register(response):
+    """Register a new user."""
+    return validate_response(response)
+
+
+@api.route('/api/v1/users.resetAvatar', ['POST'])
+def users_reset_avatar(response):
+    """Reset a user's avatar"""
+    return validate_response(response)
+
+
+@api.route('/api/v1/users.setAvatar', ['POST'])
+def users_set_avatar(response):
+    """Set a user's avatar"""
+    return validate_response(response)
+
+
+@api.route('/api/v1/users.update', ['POST'])
+def users_update(response):
+    """Update an existing user."""
+    return validate_response(response)
 
 
 class Token(cosmicray.model.Model):
@@ -616,3 +604,10 @@ class Token(cosmicray.model.Model):
     def write_to_storage(self):
         fpath = api.config['AUTH_TOKEN_FILENAME']
         cosmicray.util.write_artifact_file(fpath, self.dict, json.dumps)
+
+
+class RocketChatError(Exception):
+    def __init__(self, error, error_type, status_code):
+        message = 'Rocket.Chat Error {!r}: {!r} [!r]'.format(
+            error_type, error, status_code)
+        super(RocketChatError, self).__init__(message)
