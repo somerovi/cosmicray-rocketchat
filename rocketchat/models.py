@@ -1,6 +1,8 @@
+import json
 import datetime
 
 import cosmicray
+import cosmicray.util
 
 from cosmicray import model
 
@@ -79,9 +81,14 @@ class User(Base):
             pass
 
     def __eq__(self, obj):
-        if isinstance(obj, User):
+        if isinstance(obj, (User, cosmicray.model.ModelInstanceAttribute)):
             return self._id == obj._id
-        return obj.get('_id') == self._id
+        raise TypeError('Cannot compare User with: {}'.format(type(obj)))
+
+    def __neq__(self, obj):
+        if isinstance(obj, (User, cosmicray.model.ModelInstanceAttribute)):
+            return self._id != obj._id
+        raise TypeError('Cannot compare User with: {}'.format(type(obj)))
 
 
 class Channel(Base):
@@ -136,15 +143,13 @@ class Channel(Base):
         return list(User(username=username).get() for username in self.usernames)
 
     @property
-    def configuration(self):
+    def cache(self):
         identifier = '{}:{}'.format(self._id, self.name or '')
-        v1.api.config.setdefault(identifier, {})
-        return v1.api.config[identifier]
+        return Cache(identifier)
 
     def get(self):
-        params = {'roomId': self._id} if self._id else {'roomName': self.name}
         self.channel_type = self.CHANNEL_TYPE
-        self.dict = self(params=params).get().dict
+        self.dict = self(**self.get_params()).get().dict
         return self
 
     def add_all(self, active_users_only=False):
@@ -199,8 +204,11 @@ class Channel(Base):
                        alias=alias, emoji=emoji, avatar=avatar,
                        attachments=attachments).create()
 
+    def get_params(self):
+        return {'params': {'roomId': self._id} if self._id else {'roomName': self.name}}
+
     def get_payload(self, args=None, **kwargs):
-        payload = {'roomId': self._id}
+        payload = {'roomId': self._id} if self._id else {'roomName': self.name}
         print(payload)
         payload.update(args or {}, **kwargs)
         return {'json': payload}
@@ -343,8 +351,8 @@ class Messages(object):
 
     @property
     def unread(self):
-        last_message_dt = self.channel.configuration.get(
-            'last_message_dt', '2017-01-01')
+        last_message_dt = self.channel.cache.get(
+            'last_message_dt', datetime.date.today().isoformat())
 
         messages = self.include_unread_count\
                        .count(1)\
@@ -358,8 +366,7 @@ class Messages(object):
                                .by_daterange(last_message_dt, recent_message_dt)\
                                .get())
             self.channel.lm = messages[0]._updatedAt
-            self.channel.configuration['last_message_dt'] = messages[0]._updatedAt
-            v1.api.store_configurations()
+            self.channel.cache['last_message_dt'] = messages[0]._updatedAt
         return self._sort(messages)
 
     @property
@@ -404,3 +411,29 @@ class Messages(object):
             'latest': self.param['end'],
             'inclusive': self.param.get('inclusive', False)
         }).post()
+
+
+class Cache(object):
+    def __init__(self, identifier):
+        self.fpath = v1.api.cache_dir(identifier)
+        try:
+            self.cache = cosmicray.util.read_artifact_file(self.fpath, json.loads)
+        except (FileNotFoundError, ValueError, TypeError):
+            self.cache = {}
+
+    def save(self):
+        cosmicray.util.write_artifact_file(self.fpath, self.cache, json.dumps)
+
+    def get(self, key, default=None):
+        return self.cache.get(key, default)
+
+    def __getitem__(self, key):
+        return self.cache[key]
+
+    def __setitem__(self, key, value):
+        self.cache[key] = value
+        self.save()
+
+    def __delitem__(self, key):
+        del self.cache[key]
+        self.save()

@@ -70,7 +70,7 @@ Alternatively, the above configurations can be changed using the cli:
 
    $ rocketchat configure password --username myusername
    Promp password:
-   $ rocketchat configure domain -d "http://myrocketchatdomain.com" --no-verify
+   $ rocketchat configure domain "http://myrocketchatdomain.com" --no-verify
 
 
 Configuration: Debugging

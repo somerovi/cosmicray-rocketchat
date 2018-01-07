@@ -43,7 +43,7 @@ def configure():
 
 
 @click.command()
-@click.option('--domain', '-d', help='Specify domain')
+@click.argument('domain')
 @click.option('--verbose/--no-verbose', '-v', help='Enable verbose logging', default=False)
 @click.option('--verify/--no-verify', help='Disable SSL checking', default=False)
 def domain(domain, verbose, verify):
@@ -66,16 +66,32 @@ def password(username, password):
 
 
 @click.command()
-def channels():
+@click.argument('channel_names', required=False, nargs=-1)
+@click.option('--recent/--no-recent', help='Show recent messages', default=False)
+@click.option('--last/--no-last', help='Show the most recent message', default=False)
+@click.option('--unread/--no-unread', help='Show unread messages', default=False)
+def channels(channel_names, recent, last, unread):
+    messages_attr = (recent and 'messages.recent' or
+                     last and 'messages.last' or
+                     unread and 'messages.unread' or None)
+
+    extra_formattings = []
+    if messages_attr :
+        extra_formattings = [
+            pprint.Formatting(
+                messages_attr , is_sequence=True,
+                formattings=[
+                    pprint.Formatting(formatter=MESSAGE_FORMAT)])]
+
+    channels = list(((rocketchat.channels()[name] for name in channel_names)
+                     if channel_names else rocketchat.models.Channel.channels))
     pprint.pprint(
-        rocketchat.models.Channel(),
+        channels,
         formattings=[
             pprint.Formatting(
-                'channels', formatter=CHANNEL_FORMAT, is_sequence=True,
-                formattings=[
-                    pprint.Formatting(
-                        'last_message', formatter=MESSAGE_FORMAT)
-                ])])
+                formatter=CHANNEL_FORMAT,
+                is_sequence=True,
+                formattings=extra_formattings)])
 
 
 @click.command()
@@ -117,4 +133,4 @@ ls.add_command(users)
 
 
 if __name__ == '__main__':
-    cli(obj={})
+    cli()

@@ -30,6 +30,12 @@ def create_creds_file(username, password):
     print('Credentials stored in {}'.format(fpath))
 
 
+def set_creds_env(username, password):
+    import os
+    os.environ['ROCKETCHAT_USER'] = username
+    os.environ['ROCKETCHAT_PASSWORD'] = password
+
+
 def load_config():
     v1.api.load_configurations()
     if v1.api.get_config('monkey_patch'):
@@ -52,7 +58,7 @@ def groups():
 
 
 def direct():
-    return dict((c.name, c) for c in models.Channel.direct)
+    return dict((c._id, c) for c in models.Channel.direct)
 
 
 def users():

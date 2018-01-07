@@ -1,4 +1,5 @@
 import json
+import os
 
 import cosmicray
 
@@ -6,20 +7,35 @@ import cosmicray
 api = cosmicray.Cosmicray('rocketchat')
 # ~/.cosmicray/rocketchat
 api.config['AUTH_CREDS_FILENAME'] = api.home_dir('creds')
-api.config['AUTH_TOKEN_FILENAME'] = api.home_dir('token')
+api.config['AUTH_TOKEN_FILENAME'] = api.home_dir('token_{user}')
 api.config['RAISE_FOR_STATUS'] = False
+# Credentials from environment
+api.config['AUTH_CREDS_FROM_ENV'] = False
+os.environ['RCHAT_USER'] = ''
+os.environ['RCHAT_PASSWORD'] = ''
+# Store token response to file
+api.config['AUTH_STORE_TOKEN'] = True
 
+MESSAGE = 'chat'
+CHANNELS = 'channels'
+GROUPS = 'groups'
+DIRECT = 'im'
+USERS = 'users'
 
-ENTITY_BODY_MAP = {
-    'channels': 'channel',
-    'groups': 'group',
-    'im': 'ims'
+OBJECT_RESPONSE_MAP = {
+    CHANNELS: 'channel',
+    GROUPS: 'group',
+    DIRECT: 'ims',
+    MESSAGE: 'message',
+    USERS: 'user'
 }
 
-ENTITY_PLURAL_BODY_MAP = {
-    'channels': 'channels',
-    'groups': 'groups',
-    'im': 'ims'
+PLURAL_OBJECT_RESPONSE_MAP = {
+    CHANNELS: 'channels',
+    GROUPS: 'groups',
+    DIRECT: 'ims',
+    MESSAGE: 'messages',
+    USERS: 'users'
 }
 
 def authenticator(request):
@@ -134,68 +150,33 @@ https://docs.rocket.chat/developer-guides/rest-api/chat/
 
 @api.route('/api/v1/chat.getMessage', ['POST'])
 def message_get(response):
-    '''Retrieves a single chat message.
-    request:
-    { "msgId": "7aDSXtjMA3KPLxLjt" }
-
-    response:
-    { "message": { "_id": "7aDSXtjMA3KPLxLjt", "rid": "GENERAL",
-        "msg": "This is a test!", "ts": "2016-12-14T20:56:05.117Z",
-        "u": { "_id": "y65tAmHs93aDChMWu", "username": "graywolf336" } },
-      "success": true }
-    '''
-    return validate_response(response).get('message')
+    '''Retrieves a single chat message.'''
+    return validate_response(response).get(OBJECT_RESPONSE_MAP[MESSAGE])
 
 
 @api.route('/api/v1/chat.postMessage', ['POST'])
 def message_post(response):
-    '''Posts a new chat message.
-
-    request:
-    { "channel": "#general", "text": "This is a test!" }
-
-    More examples:
-    https://docs.rocket.chat/developer-guides/rest-api/chat/postmessage#message-object-example
-
-     '''
-    return validate_response(response).get('message')
+    '''Posts a new chat message.'''
+    return validate_response(response).get(OBJECT_RESPONSE_MAP[MESSAGE])
 
 
 @api.route('/api/v1/chat.update', ['POST'])
 def message_update(response):
     '''Updates the text of the chat message.'''
-    return validate_response(response).get('message')
+    return validate_response(response).get(OBJECT_RESPONSE_MAP[MESSAGE])
 
 
 @api.route('/api/v1/chat.delete', ['POST'])
 def message_delete(response):
-    '''Deletes an existing chat message.
-    request
-    { "roomId": "ByehQjC44FwMeiLbX", "msgId": "7aDSXtjMA3KPLxLjt", "asUser": true }
-
-    response:
-    { "_id": "7aDSXtjMA3KPLxLjt", "ts": 1481741940895, "success": true }
-    '''
+    '''Deletes an existing chat message.'''
     return validate_response(response)
 
 
 
 @api.route('/api/v1/chat.pinMessage', ['POST'])
 def message_pin(response):
-    '''Pins a chat message to the messages channel.
-    request:
-    { "messageId": "7aDSXtjMA3KPLxLjt" }
-
-    response:
-    { "message": { "t": "message_pinned", "rid": "GENERAL", "ts": "2017-09-27T20:39:57.921Z",
-        "msg": "", "u": { "_id": "Z3cpiYN6CNK2oXWKv", "username": "graywolf336"},
-        "groupable": false, "attachments": [ {
-            "text": "Hello", "author_name": "graywolf336",
-            "author_icon": "/avatar/graywolf336?_dc=0", "ts": "2017-09-27T19:36:01.683Z" } ],
-        "_updatedAt": "2017-09-27T20:39:57.921Z", "_id": "hmzxXKSWmMkoQyiAd" },
-      "success": true}
-    '''
-    return validate_response(response).get('message')
+    '''Pins a chat message to the messages channel.'''
+    return validate_response(response).get(OBJECT_RESPONSE_MAP[MESSAGE])
 
 
 @api.route('/api/v1/chat.react', ['POST'])
@@ -235,7 +216,7 @@ def channels_private_messages(response):
     """Retrieves the messages from any private channel in the server.
     NOTE: Must ``Enable Direct Message History Endpoint`` otherwise returns 400
     """
-    return validate_response(response).get('messages')
+    return validate_response(response).get(PLURAL_OBJECT_RESPONSE_MAP[MESSAGE])
 
 
 @api.route('/api/v1/im.list.everyone', ['GET'])
@@ -248,16 +229,14 @@ def channels_private_rooms(response):
 
 @api.route('/api/v1/channels.cleanHistory', ['POST'])
 def channels_remove_messages(response):
-    ''' Cleans up a channels history, requires special permission.'''
+    '''Cleans up a channels history, requires special permission.'''
     return validate_response(response)
 
 
 @api.route('/api/v1/channels.list.joined', ['GET'])
 def channels_list_joined(response):
-    '''Gets only the channels the calling user has joined.
-    https://rocket.chat/docs/developer-guides/rest-api/channels/list-joined/
-    '''
-    return validate_response(response).get('channels')
+    '''Gets only the channels the calling user has joined.'''
+    return validate_response(response).get(CHANNELS)
 
 
 @api.route('/api/v1/channels.setJoinCode', ['POST'])
@@ -267,10 +246,10 @@ def channels_set_join_code(response):
 
 
 @api.route('/api/v1/{channel_type}.list', ['GET'], urlargs=[
-    cosmicray.Param('channel_type', options=['channels', 'groups', 'im'])])
+    cosmicray.Param('channel_type', options=[CHANNELS, GROUPS, DIRECT])])
 def channels_list(context, response):
     '''Retrives all of the channels from the server.'''
-    key = ENTITY_PLURAL_BODY_MAP.get(context.urlargs['channel_type'])
+    key = PLURAL_OBJECT_RESPONSE_MAP.get(context.urlargs['channel_type'])
     return validate_response(response).get(key)
 
 
@@ -279,10 +258,10 @@ def channels_list(context, response):
     cosmicray.Param('roomId'),
     # Required (if no roomId) The channels name
     cosmicray.Param('roomName')], urlargs=[
-        cosmicray.Param('channel_type', options=['channels', 'groups'])])
+        cosmicray.Param('channel_type', options=[CHANNELS, GROUPS])])
 def channels_info(context, response):
     ''' Gets a channels information.'''
-    key = ENTITY_BODY_MAP.get(context.urlargs['channel_type'])
+    key = OBJECT_RESPONSE_MAP.get(context.urlargs['channel_type'])
     return validate_response(response).get(key)
 
 
@@ -303,12 +282,12 @@ def channels_info(context, response):
            ],
            urlargs=[
                cosmicray.Param(
-                   'channel_type', options=['channels', 'im', 'groups'])
+                   'channel_type', options=[CHANNELS, DIRECT, GROUPS])
            ])
 def channels_messages(context, response):
     """Retrieves the messages from a public, group, or direct channel."""
     jdata = validate_response(response)
-    messages = jdata.get('messages')
+    messages = jdata.get(PLURAL_OBJECT_RESPONSE_MAP[MESSAGE])
     for message in messages:
         message['channel_type'] = context.urlargs['channel_type']
         message['unreadNotLoaded'] = jdata.get('unreadNotLoaded')
@@ -316,7 +295,7 @@ def channels_messages(context, response):
 
 
 @api.route('/api/v1/{channel_type}.open', ['POST'], urlargs=[
-    cosmicray.Param('channel_type', options=['channels', 'groups', 'im'])
+    cosmicray.Param('channel_type', options=[CHANNELS, GROUPS, DIRECT])
 ])
 def channels_open(response):
     ''' Adds the channel back to the users list of channels.'''
@@ -324,28 +303,24 @@ def channels_open(response):
 
 
 @api.route('/api/v1/{channel_type}.close', ['POST'], urlargs=[
-    cosmicray.Param('channel_type', options=['channels', 'groups', 'im'])
+    cosmicray.Param('channel_type', options=[CHANNELS, GROUPS, DIRECT])
 ])
 def channels_close(response):
-    ''' Removes a channel from a users list of channels.'''
+    '''Removes a channel from a users list of channels.'''
     return validate_response(response)
 
 
 @api.route('/api/v1/{channel_type}.addAll', ['POST'], urlargs=[
-    cosmicray.Param('channel_type', options=['channels', 'groups'])
+    cosmicray.Param('channel_type', options=[CHANNELS, GROUPS])
 ])
 def channels_add_all(response):
-    '''
-    Adds all of the users on the server to a channel.
-    request:
-    { "roomId": "ByehQjC44FwMeiLbX", "activeUsersOnly": true|false }
-    '''
+    '''Adds all of the users on the server to a channel.'''
     return validate_response(response).get('channel')
 
 
 @api.route('/api/v1/{channel_type}.{action}Moderator', ['POST'], urlargs=[
     cosmicray.Param('action', options=['add', 'remove']),
-    cosmicray.Param('channel_type', options=['channels', 'groups'])])
+    cosmicray.Param('channel_type', options=[CHANNELS, GROUPS])])
 def channels_moderator(response):
     ''' Gives the role of moderator to a user in a channel.'''
     ''' Removes the role of moderator from a user in a channel.'''
@@ -354,7 +329,7 @@ def channels_moderator(response):
 
 @api.route('/api/v1/{channel_type}.{action}Owner', ['POST'], urlargs=[
     cosmicray.Param('action', options=['add', 'remove']),
-    cosmicray.Param('channel_type', options=['channels', 'groups'])])
+    cosmicray.Param('channel_type', options=[CHANNELS, GROUPS])])
 def channels_owner(response):
     '''Gives the role of owner to a user in a channel.'''
     '''Removes the role of owner from a user in a channel.'''
@@ -362,37 +337,31 @@ def channels_owner(response):
 
 
 @api.route('/api/v1/{channel_type}.create', ['POST'], urlargs=[
-    cosmicray.Param('channel_type', options=['channels', 'groups'])
+    cosmicray.Param('channel_type', options=[CHANNELS, GROUPS])
 ])
 def channels_create(context, response):
-    '''Creates a new channel.
-    https://rocket.chat/docs/developer-guides/rest-api/channels/create/
-    '''
-    key = ENTITY_BODY_MAP.get(context.urlargs['channel_type'])
+    '''Creates a new channel.'''
+    key = OBJECT_RESPONSE_MAP.get(context.urlargs['channel_type'])
     return validate_response(response).get(key)
 
 
 @api.route('/api/v1/{channel_type}.archive', ['POST'], urlargs=[
-    cosmicray.Param('channel_type', options=['channels', 'groups'])
+    cosmicray.Param('channel_type', options=[CHANNELS, GROUPS])
 ])
 def channels_archive(response):
-    '''Archives a channel.
-    https://rocket.chat/docs/developer-guides/rest-api/channels/archive/
-    '''
+    '''Archives a channel.'''
     return validate_response(response)
 
 
 @api.route('/api/v1/{channel_type}.unarchive', ['POST'], urlargs=[
-    cosmicray.Param('channel_type', options=['channels', 'groups'])
+    cosmicray.Param('channel_type', options=[CHANNELS, GROUPS])
 ])
 def channels_unarchive(response):
-    '''Unarchives a channel.
-    https://rocket.chat/docs/developer-guides/rest-api/channels/unarchive/
-    '''
+    '''Unarchives a channel.'''
     return validate_response(response)
 
 @api.route('/api/v1/{channel_type}.getIntegrations', ['GET'], urlargs=[
-    cosmicray.Param('channel_type', options=['channels', 'groups'])
+    cosmicray.Param('channel_type', options=[CHANNELS, GROUPS])
 ])
 def channels_get_integrations(response):
     ''' Gets the channels integration.'''
@@ -400,45 +369,43 @@ def channels_get_integrations(response):
 
 
 @api.route('/api/v1/{channel_type}.invite', ['POST'], urlargs=[
-    cosmicray.Param('channel_type', options=['channels', 'groups'])
+    cosmicray.Param('channel_type', options=[CHANNELS, GROUPS])
 ])
 def channels_invite(context, response):
-    '''Adds a user to a channel.
-    https://rocket.chat/docs/developer-guides/rest-api/channels/invite/
-    '''
-    key = ENTITY_BODY_MAP.get(context.urlargs['channel_type'])
+    '''Adds a user to a channel.'''
+    key = OBJECT_RESPONSE_MAP.get(context.urlargs['channel_type'])
     return validate_response(response).get(key)
 
 
 @api.route('/api/v1/{channel_type}.kick', ['POST'], urlargs=[
-    cosmicray.Param('channel_type', options=['channels', 'groups'])
+    cosmicray.Param('channel_type', options=[CHANNELS, GROUPS])
 ])
 def channels_kick(context, response):
     ''' Removes a user from a channel.'''
-    key = ENTITY_BODY_MAP.get(context.urlargs['channel_type'])
+    key = OBJECT_RESPONSE_MAP.get(context.urlargs['channel_type'])
     return validate_response(response).get(key)
 
 
 @api.route('/api/v1/{channel_type}.leave', ['POST'], urlargs=[
-    cosmicray.Param('channel_type', options=['channels', 'groups'])
+    cosmicray.Param('channel_type', options=[CHANNELS, GROUPS])
 ])
 def channels_leave(context, response):
     ''' Removes the calling user from a channel.'''
-    key = ENTITY_BODY_MAP.get(context.urlargs['channel_type'])
+    key = OBJECT_RESPONSE_MAP.get(context.urlargs['channel_type'])
     return validate_response(response).get(key)
 
 
 @api.route('/api/v1/{channel_type}.rename', ['POST'], urlargs=[
-    cosmicray.Param('channel_type', options=['channels', 'groups'])
+    cosmicray.Param('channel_type', options=[CHANNELS, GROUPS])
 ])
 def channels_rename(context, response):
     ''' Changes a channels name.'''
-    key = ENTITY_BODY_MAP.get(context.urlargs['channel_type'])
+    key = OBJECT_RESPONSE_MAP.get(context.urlargs['channel_type'])
     return validate_response(response).get(key)
 
 
 @api.route('/api/v1/{channel_type}.setDescription', ['POST'], urlargs=[
-    cosmicray.Param('channel_type', options=['channels', 'groups'])
+    cosmicray.Param('channel_type', options=[CHANNELS, GROUPS])
 ])
 def channels_set_description(response):
     ''' Sets a channels description.'''
@@ -446,7 +413,7 @@ def channels_set_description(response):
 
 
 @api.route('/api/v1/{channel_type}.setPurpose', ['POST'], urlargs=[
-    cosmicray.Param('channel_type', options=['channels', 'groups'])
+    cosmicray.Param('channel_type', options=[CHANNELS, GROUPS])
 ])
 def channels_set_purpose(response):
     ''' Sets a channels description.'''
@@ -454,16 +421,16 @@ def channels_set_purpose(response):
 
 
 @api.route('/api/v1/{channel_type}.setReadOnly', ['POST'], urlargs=[
-    cosmicray.Param('channel_type', options=['channels', 'groups'])
+    cosmicray.Param('channel_type', options=[CHANNELS, GROUPS])
 ])
 def channels_set_readonly(context, response):
     ''' Sets whether a channel is read only or not.'''
-    key = ENTITY_BODY_MAP.get(context.urlargs['channel_type'])
+    key = OBJECT_RESPONSE_MAP.get(context.urlargs['channel_type'])
     return validate_response(response).get(key)
 
 
 @api.route('/api/v1/{channel_type}.setTopic', ['POST'], urlargs=[
-    cosmicray.Param('channel_type', options=['channels', 'groups', 'im'])
+    cosmicray.Param('channel_type', options=[CHANNELS, GROUPS, DIRECT])
 ])
 def channels_set_topic(response):
     ''' Sets a channels topic.'''
@@ -471,11 +438,11 @@ def channels_set_topic(response):
 
 
 @api.route('/api/v1/{channel_type}.setType', ['POST'], urlargs=[
-    cosmicray.Param('channel_type', options=['channels', 'groups'])
+    cosmicray.Param('channel_type', options=[CHANNELS, GROUPS])
 ])
 def channels_set_type(context, response):
     ''' Sets the type of room the channel should be.'''
-    key = ENTITY_BODY_MAP.get(context.urlargs['channel_type'])
+    key = OBJECT_RESPONSE_MAP.get(context.urlargs['channel_type'])
     return validate_response(response).get(key)
 
 
@@ -519,28 +486,21 @@ def users_get_avatar(response):
 @api.route('/api/v1/users.getPresence', ['GET'], params=[
     cosmicray.Param('userId'), cosmicray.Param('username')])
 def users_get_presence(response):
-    """Gets the online presence of the a user.
-
-    response: { "presence": "offline", "success": true }
-    """
+    """Gets the online presence of the a user."""
     return validate_response(response)
 
 
 @api.route('/api/v1/users.info', ['GET'], params=[
     cosmicray.Param('userId'), cosmicray.Param('username')])
 def users_info(response):
-    """Gets a user's information, limited to the caller's permissions.
-    { "user": { "_id": "nSYqWzZ4GsKTX4dyK", "type": "user", "status":
-    "offline", "active": true, "name": "Example User", "utcOffset": 0,
-    "username": "example"  }, "success": true  }
-    """
-    return validate_response(response).get('user')
+    """Gets a user's information, limited to the caller's permissions."""
+    return validate_response(response).get(OBJECT_RESPONSE_MAP[USERS])
 
 
 @api.route('/api/v1/users.list', ['GET'])
 def users_list(response):
     """All of the users and their information, limited to permissions."""
-    return validate_response(response).get('users')
+    return validate_response(response).get(PLURAL_OBJECT_RESPONSE_MAP[USERS])
 
 
 @api.route('/api/v1/users.register', ['POST'])
@@ -571,43 +531,70 @@ class Token(cosmicray.model.Model):
     __route__ = login
     __slots__ = [
         'authToken',
-        'userId'
+        'userId',
+        # Non-API fields
+        '_credentials',
     ]
+    token = None
+
+    @property
+    def credentials(self):
+        if self._credentials is None:
+            if api.config['AUTH_CREDS_FROM_ENV']:
+                self._credentials = {
+                    'user': os.environ['RCHAT_USER'],
+                    'password': os.environ['RCHAT_PASSWORD']
+                }
+            else:
+                fpath = api.config['AUTH_CREDS_FILENAME']
+                self._credentials = cosmicray.util.read_artifact_file(
+                    fpath, json.loads)
+        return self._credentials
+
+    @property
+    def user(self):
+        return self.credentials['user']
+
+    @property
+    def password(self):
+        return self.credentials['password']
 
     def get_create_payload(self):
-        fpath = api.config['AUTH_CREDS_FILENAME']
-        creds = cosmicray.util.read_artifact_file(fpath)
-        return {'data': creds}
+        if not self.user or not self.password:
+            raise RocketChatError('user/password cannot be blank', 'auth', '-')
+        return {'data': json.dumps(self.credentials)}
 
     @classmethod
     def authenticate(cls):
-        token = cls.read_from_storage()
-        if not token:
-            token = Token().create()
-            token.write_to_storage()
-        return token
+        if Token.token is None:
+            Token.token = Token().read_from_storage()
+        if not Token.token:
+            Token.token = Token().create()
+            Token.token.write_to_storage()
+        return Token.token
 
     @classmethod
     def clear_from_storage(cls):
-        fpath = api.config['AUTH_TOKEN_FILENAME']
+        fpath = api.config['AUTH_TOKEN_FILENAME'].format(user=Token().user)
         cosmicray.util.write_artifact_file(fpath, 'session-expired')
 
-    @classmethod
-    def read_from_storage(cls):
-        try:
-            fpath = api.config['AUTH_TOKEN_FILENAME']
-            data = cosmicray.util.read_artifact_file(fpath, json.loads)
-            return Token(**data)
-        except:
-            pass
+    def read_from_storage(self):
+        if api.config['AUTH_STORE_TOKEN']:
+            try:
+                fpath = api.config['AUTH_TOKEN_FILENAME'].format(user=self.user)
+                data = cosmicray.util.read_artifact_file(fpath, json.loads)
+                return Token(**data)
+            except Exception as error:
+                pass
 
     def write_to_storage(self):
-        fpath = api.config['AUTH_TOKEN_FILENAME']
-        cosmicray.util.write_artifact_file(fpath, self.dict, json.dumps)
+        if api.config['AUTH_STORE_TOKEN']:
+            fpath = api.config['AUTH_TOKEN_FILENAME'].format(user=self.user)
+            cosmicray.util.write_artifact_file(fpath, self.dict, json.dumps)
 
 
 class RocketChatError(Exception):
     def __init__(self, error, error_type, status_code):
-        message = 'Rocket.Chat Error {!r}: {!r} [!r]'.format(
+        message = 'Rocket.Chat Error {!r}: {!r} [{!r}]'.format(
             error_type, error, status_code)
         super(RocketChatError, self).__init__(message)
