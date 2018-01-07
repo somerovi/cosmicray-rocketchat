@@ -209,7 +209,6 @@ class Channel(Base):
 
     def get_payload(self, args=None, **kwargs):
         payload = {'roomId': self._id} if self._id else {'roomName': self.name}
-        print(payload)
         payload.update(args or {}, **kwargs)
         return {'json': payload}
 
