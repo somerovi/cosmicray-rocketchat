@@ -1,0 +1,15 @@
+[[source]]
+url = "https://pypi.python.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+cosmicray = "==0.0.9"
+click = "==6.7"
+
+[dev-packages]
+pytest = ">=2.8.0"
+sphinx = "==1.6.5"
+twine = "==1.9.1"
+wheel = "==0.30.0"
+"3dErak7u" = {path = ".", editable = true}
