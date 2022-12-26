@@ -11,5 +11,5 @@ click = "==6.7"
 pytest = ">=2.8.0"
 sphinx = "==1.6.5"
 twine = "==1.9.1"
-wheel = "==0.30.0"
+wheel = "==0.38.1"
 "3dErak7u" = {path = ".", editable = true}
